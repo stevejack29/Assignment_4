@@ -1,0 +1,165 @@
+---
+title: "Jackson_B00829956_Assignment4"
+author: "Steven Jackson"
+format: html
+editor: visual
+---
+
+Start by cloning the repository from http://github.com/iyakoven/PSYR6003~Assignment~4 .
+
+Next, import the dataset. Remove any missing values.
+
+```{r}
+library(haven)
+P6003_A4 <- read_sav("~/PSYR6003-Assignment-4/P6003.A4.sav")
+
+#Removing missing values
+P6003_A4 <- na.omit(P6003_A4)
+View(P6003_A4)
+
+#Observations in P6003_A4 went from 4,252 to 4,246.
+
+#Lastly, because there are many unneeded variables, we'll select only the variables we want.
+library(tidyverse)
+P6003_A4 <- select(P6003_A4, id, day, swl, tipm.E, tipm.N)
+head(P6003_A4)
+
+```
+
+Next, we will look at the predictors relative to the outcome, while ignoring participant ID for now.
+
+```{r}
+library(flexplot)
+
+#Extraversion
+ext <- flexplot(swl~tipm.E, data=P6003_A4)
+
+#Neuroticism
+nrt <- flexplot(swl~tipm.N, data=P6003_A4)
+
+```
+
+So far, the relationship appears linear. We'll look at the residuals as well. We'll build a simple model that takes into account the repeated measurements (i.e., the id variable). We'll begin by visualizing the univariate distributions.
+
+```{r}
+#Visualize univariate distributions
+
+flexplot(swl~1, data = P6003_A4)
+flexplot(tipm.E~1, data = P6003_A4)
+flexplot(tipm.N~1, data = P6003_A4)
+
+```
+
+Now, we will take a look at the bivariate correlations and descriptive metrics.
+
+```{r}
+library(apaTables)
+
+#Vector to facilitate correlation table
+correlations <- select(P6003_A4, tipm.E, tipm.N)
+
+apa.cor.table(correlations, table.number = 1, filename = "correlations.doc")
+
+```
+
+Now, we will create a simple mixed linear model with no predictors and the intercept set to random. We will not include any predictors.
+
+```{r}
+#Simple mixed LM, no predictors, random intercept
+
+library(lme4)
+simple <- lmer (swl ~ 1+(1|id), data = P6003_A4)
+summary(simple)
+
+#Evaluate ICC
+library(flexplot)
+icc(simple)
+
+```
+
+Our ICC is \~0.74, indicating that a high degree of the variance of life satisfaction is due to clustering (i.e., the participant ID). This indicates that we are correct in using a mixed effects model, rather than a regular linear regression model. In fact, if we were to treat all observations as independent (i.e., not use a mixed effects model), we would artifically increase our sample size more than 12-fold. It is crucial to use a linear mixed model with these data.
+
+For hypotheses #1 and #2, we will create a model for satisfaction with life using extraversion as fixed (i.e., extraversion predicts satisfaction with life and this effect is the same across participants), and one with extraversion as a random effect (i.e., extraversion predicts satisfaction with life to a varying degree across participants). This will address hypothesis #1. We will then repeat this process for neuroticism in order to test hypothesis #2.
+
+```{r}
+#Extraversion
+
+#Generate reduced model for extraversion, using it as fixed.
+fixed_extraversion <- lmer (swl ~  tipm.E + (1|id), data = P6003_A4)
+summary(fixed_extraversion)
+
+#Random + fixed extraversion model
+random_extraversion <- lmer (swl ~ tipm.E + (tipm.E|id), data = P6003_A4)
+summary(random_extraversion)
+
+#Comparing the models
+model.comparison(fixed_extraversion, random_extraversion)
+
+```
+
+Looking at the comparison, we can see that using extraversion and neuroticism as random effects for their respective models is the best fit. For both variables, they had very high Bayes factors (decisive evidence for using random instead of fixed), and smaller AIC & BIC, both indicating better fits. According to the available metrics, extraversion and neuroticism should both be used as random effects.
+
+Next, we will take the extraversion model with the best fit and add neuroticism. Since extraversion is already known to be better as a random effect, we'll set extravertion to random, try neuroticism as random & fixed in this combined model, and again pick the best fitting parameter based on the fit metrics.
+
+```{r}
+#Random extraversion, fixed neuroticism
+random_extraversion_fixed_neuroticism <- lmer (swl ~ tipm.E + tipm.N + (tipm.E|id), data = P6003_A4)
+
+#Random extraversion, random neuroticism
+random_extraversion_random_neuroticism <- lmer (swl ~ tipm.E + tipm.N + (tipm.E + tipm.N|id), data = P6003_A4)
+
+#Model comparison
+model.comparison(random_extraversion_fixed_neuroticism, random_extraversion_random_neuroticism)
+```
+
+After doing the comparisons, the best-fitting models are random extraversion and random neuroticism. The model comparison above shows that the random-random model has a lower AIC & BIC, as well as a Bayes factor denoting decisive evidence in favour of the random-random model. Lastly, the R\^2 changes for the intercept and residual is -0.28 and -0.08 respectively, indicating a 28% increase in predicted variance around the fixed mean, and an 8% increase in the predicted variance of the cluster mean using the random model instead of the fixed one. All of these metrics point to the random effects model having a better fit than the mixed model.
+
+```{r}
+summary(random_extraversion_random_neuroticism)
+```
+
+For the third and final hypothesis, we will test whether the effects are similar both within-participants and between-participants. We can do this by visualizing our existing model.
+
+```{r}
+#Visualizing model 
+visualize(random_extraversion_random_neuroticism, plot = "model")
+
+#Obtaining diagnostics
+visualize(random_extraversion_random_neuroticism, plot = "residuals" )
+
+#Summary
+summary(random_extraversion_random_neuroticism)
+
+#Important estimates
+estimates(random_extraversion_random_neuroticism)
+
+#R2 values
+library(performance)
+
+r2(random_extraversion_random_neuroticism)
+```
+
+The diagnostics look very strong. The residuals are clearly normally distributed, the residual dependence plot is flat, and the S-L plot is flat as well.
+
+As seen in the generated graphs, the relationship between satisfaction with life, extraversion, and neuroticism is similar between and within participants. This confirms hypothesis #3. The intercept R\^2 is negative, indicating that the model predicted none of the variance around the overall mean satisfaction with life. The residual R\^2, however, was 0.26, indicating that the model predicted \~26% of the variance around the mean for each participant.
+
+```{r}
+#Table 2 - regression model
+
+library(apaTables)
+
+#This table didn't work, so I generated it anyway and edited the document manually for upload.
+table_model1 <- lm(swl~tipm.E+tipm.N, data=P6003_A4)
+
+#Subject ID variable was created in an attempt to solve the issue, but I'll just keep it so I don't need to edit any further.
+subject_ID <- as.numeric(P6003_A4$id)
+
+
+table_model2 <- lm(swl ~ tipm.E + tipm.N + ((tipm.E + tipm.N)*subject_ID), data=P6003_A4)
+
+#The statistics in this table are inaccurate, so I used it to generate a table I edited manually.
+apa.reg.table(table_model1,table_model2, filename="table.doc")
+
+estimates(random_extraversion_random_neuroticism)
+summary(random_extraversion_random_neuroticism)
+```
